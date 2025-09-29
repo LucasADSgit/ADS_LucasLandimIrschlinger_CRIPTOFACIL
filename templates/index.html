@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>CriptoFácil</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container index-container">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo CriptoFácil" class="logo">
+        <p class="descricao">Aprenda sobre criptoativos de forma simples e prática, com quizzes interativos e trilhas de conhecimento personalizadas para iniciantes.</p>
+
+
+        <div class="button-group">
+            <a href="{{ url_for('login') }}" class="btn">Login</a>
+            <a href="{{ url_for('cadastro') }}" class="btn">Criar Conta</a>
+
+        </div>
+    </div>
+</body>
+</html>

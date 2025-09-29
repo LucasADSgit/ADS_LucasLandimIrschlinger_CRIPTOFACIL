@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Criar Conta - CriptoFácil</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Criar Conta</h1>
+        <form action="{{ url_for('cadastro') }}" method="post">
+            <input type="text" name="nome" placeholder="Nome" required>
+            <input type="email" name="email" placeholder="E-mail" required>
+            <input type="password" name="senha" placeholder="Senha" required>
+            <button type="submit" class="btn">Cadastrar</button>
+            <a href="{{ url_for('login') }}">Já possui conta? Faça login</a>
+        </form>
+    </div>
+</body>
+</html>

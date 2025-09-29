@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quiz - CriptoFácil</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+
+</head>
+<body>
+    <h1>Quiz</h1>
+    <form method="POST">
+        {% for q in quiz %}
+            <p>{{ q.pergunta }}</p>
+            <input type="text" name="{{ q.id }}" required><br>
+        {% endfor %}
+        <button type="submit">Enviar Respostas</button>
+    </form>
+</body>
+</html>

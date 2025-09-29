@@ -1,0 +1,62 @@
+import sqlite3
+
+# Conecta ou cria o banco
+conn = sqlite3.connect("banco.db")
+cursor = conn.cursor()
+
+# Cria tabela de usuários
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS usuarios (
+    id_usuario INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    senha_hash TEXT NOT NULL,
+    nivel TEXT DEFAULT 'iniciante',
+    data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+""")
+
+# Cria tabela de trilhas
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS trilhas (
+    id_trilha INTEGER PRIMARY KEY AUTOINCREMENT,
+    titulo TEXT NOT NULL,
+    descricao TEXT,
+    nivel TEXT NOT NULL
+)
+""")
+
+# Cria tabela de conteúdos
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS conteudos (
+    id_conteudo INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_trilha INTEGER,
+    titulo TEXT NOT NULL,
+    descricao TEXT,
+    tipo TEXT,
+    url TEXT,
+    FOREIGN KEY(id_trilha) REFERENCES trilhas(id_trilha)
+)
+""")
+
+# Cria tabela de quizzes
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS quizzes (
+    id_quizz INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_trilha INTEGER,
+    titulo TEXT NOT NULL,
+    descricao TEXT,
+    FOREIGN KEY(id_trilha) REFERENCES trilhas(id_trilha)
+)
+""")
+
+# Inserir uma trilha de exemplo (só para ter algo para exibir)
+cursor.execute("""
+INSERT INTO trilhas (titulo, descricao, nivel)
+VALUES ('Introdução aos Criptoativos', 'Aprenda os conceitos básicos de criptomoedas.', 'iniciante')
+""")
+
+conn.commit()
+conn.close()
+
+print("Banco de dados criado e populado com sucesso!")

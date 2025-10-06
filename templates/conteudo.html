@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ conteudo.titulo }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <div class="user-info">
+            <span>Olá, bem-vindo {{ usuario.nome }}</span>
+            <a href="{{ url_for('perfil') }}" class="perfil-btn">👤 Perfil</a>
+        </div>
+        <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+    </div>
+
+    <div class="container">
+        <h1>{{ conteudo.titulo }}</h1>
+
+        {% if conteudo.texto %}
+        <div class="conteudo-texto">
+            {{ conteudo.texto | safe }}
+        </div>
+        {% endif %}
+
+        <!-- Botão check Concluído -->
+        <button id="btn-concluido" class="check-btn {% if usuario_concluido %}completed{% endif %}">
+            {% if usuario_concluido %}✅ Concluído{% else %}Concluir{% endif %}
+        </button>
+
+        <a href="{{ url_for('conteudos', trilha_id=conteudo.trilha_id) }}" class="btn voltar">Voltar à Trilha</a>
+    </div>
+
+<script>
+const btn = document.getElementById('btn-concluido');
+
+btn.addEventListener('click', () => {
+    fetch("{{ url_for('toggle_concluido', conteudo_id=conteudo.id) }}", { method: "POST" })
+        .then(resp => resp.json())
+        .then(data => {
+            if(data.concluido){
+                btn.classList.add('completed');
+                btn.textContent = '✅ Concluído';
+            } else {
+                btn.classList.remove('completed');
+                btn.textContent = 'Concluir';
+            }
+
+            // Atualiza contador no perfil em tempo real (se tiver elemento)
+            const contador = document.getElementById('contador-concluidos');
+            if(contador) contador.textContent = data.total_concluidos;
+        })
+        .catch(err => console.error(err));
+});
+</script>
+</body>
+</html>

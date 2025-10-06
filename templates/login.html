@@ -8,12 +8,14 @@
 <body>
     <div class="container">
         <h1>Login</h1>
+        {% if error %}
+            <div class="alert">{{ error }}</div>
+        {% endif %}
         <form action="{{ url_for('login') }}" method="post">
             <input type="email" name="email" placeholder="E-mail" required>
             <input type="password" name="senha" placeholder="Senha" required>
             <button type="submit" class="btn">Entrar</button>
             <a href="{{ url_for('cadastro') }}">Ainda não tem conta? Cadastre-se</a>
-
         </form>
     </div>
 </body>

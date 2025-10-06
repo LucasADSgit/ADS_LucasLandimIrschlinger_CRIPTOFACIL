@@ -1,18 +1,36 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
+    <meta charset="UTF-8">
     <title>Trilhas - CriptoFácil</title>
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
-
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h1>Trilhas Disponíveis</h1>
-    <ul>
-        {% for t in trilhas %}
-        <li>{{ t.titulo }} - Nível: {{ t.nivel }} 
-            <a href="/quiz/{{ t.id }}">Iniciar Quiz</a>
-        </li>
-        {% endfor %}
-    </ul>
+    <div class="top-bar">
+    <div class="user-info">
+        <span>Olá, bem-vindo {{ usuario.nome }}</span>
+        <a href="{{ url_for('perfil') }}" class="perfil-btn">👤 Perfil</a>
+    </div>
+    <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+    </div>
+
+
+    <div class="container">
+        <h1>Trilhas Disponíveis</h1>
+        <div class="trilhas-lista">
+            {% for t in trilhas %}
+                <div class="trilha-card">
+                    <h2>{{ t.titulo }}</h2>
+                    <p>{{ t.descricao }}</p>
+                    {% if t.nivel %}
+                        <p><strong>Nível:</strong> {{ t.nivel }}</p>
+                    {% endif %}
+                    <a href="{{ url_for('conteudos', trilha_id=t.id) }}" class="btn">Ver Conteúdos</a>
+                </div>
+            {% else %}
+                <p>Nenhuma trilha cadastrada ainda.</p>
+            {% endfor %}
+        </div>
+    </div>
 </body>
 </html>

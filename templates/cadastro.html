@@ -8,6 +8,9 @@
 <body>
     <div class="container">
         <h1>Criar Conta</h1>
+        {% if error %}
+            <div class="alert">{{ error }}</div>
+        {% endif %}
         <form action="{{ url_for('cadastro') }}" method="post">
             <input type="text" name="nome" placeholder="Nome" required>
             <input type="email" name="email" placeholder="E-mail" required>

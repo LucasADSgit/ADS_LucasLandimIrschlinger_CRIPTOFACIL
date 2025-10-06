@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Perfil do Usuário</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="top-bar">
+        <a href="{{ url_for('trilhas') }}" class="btn top-btn">🏠 Trilhas</a>
+        <a href="{{ url_for('logout') }}" class="btn logout-btn">Logout</a>
+    </div>
+
+    <div class="container">
+        <h1>Perfil de {{ usuario['nome'] }}</h1>
+        <p><strong>Email:</strong> {{ usuario['email'] }}</p>
+        <p><strong>Atividades concluídas:</strong> <span id="contador-concluidos">{{ concluidos }}</span></p>
+
+        <h2>🎖 Recompensas</h2>
+        <ul class="recompensas">
+            {% if concluidos >= 1 %}
+                <li>🏅 Primeiro Passo - Concluiu 1 atividade</li>
+            {% endif %}
+            {% if concluidos >= 5 %}
+                <li>🥈 Explorador - Concluiu 5 atividades</li>
+            {% endif %}
+            {% if concluidos >= 10 %}
+                <li>🥇 Mestre Cripto - Concluiu 10 atividades</li>
+            {% endif %}
+        </ul>
+
+        <a href="{{ url_for('trilhas') }}" class="btn voltar">⬅ Voltar às Trilhas</a>
+    </div>
+</body>
+</html>

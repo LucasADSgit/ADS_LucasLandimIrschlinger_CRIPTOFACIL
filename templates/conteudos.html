@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Conteúdos - {{ trilha.titulo }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <div class="user-info">
+            <span>Olá, bem-vindo {{ usuario.nome }}</span>
+            <a href="{{ url_for('perfil') }}" class="perfil-btn">👤 Perfil</a>
+        </div>
+        <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+    </div>
+
+    <!-- Conteúdos -->
+    <div class="container">
+        <h1>Conteúdos da Trilha: {{ trilha.titulo }}</h1>
+        <div class="conteudos-lista">
+            {% for c in conteudos %}
+                <div class="conteudo-card">
+                    <h2>{{ c.titulo }}</h2>
+                    {% if c.descricao %}
+                        <p>{{ c.descricao }}</p>
+                    {% endif %}
+
+                    <!-- Botões de ações -->
+                    <div class="acoes">
+                        <a href="{{ url_for('ver_conteudo', conteudo_id=c.id) }}" class="btn abrir-conteudo">Acessar Conteúdo</a>
+                        <a href="{{ url_for('quiz', conteudo_id=c.id) }}" class="btn">Fazer Quiz</a>
+                    </div>
+
+                    {% if c.texto %}
+                        <div id="conteudo-{{ c.id }}" class="conteudo-texto" style="display:none;">
+                            {{ c.texto | safe }}
+                        </div>
+                    {% endif %}
+                </div>
+            {% else %}
+                <p>Nenhum conteúdo disponível para esta trilha.</p>
+            {% endfor %}
+        </div>
+
+        <a href="{{ url_for('trilhas') }}" class="btn voltar">Voltar à Trilha</a>
+    </div>
+
+    <script>
+        function toggleConteudo(id) {
+            const elem = document.getElementById(id);
+            if (!elem) return;
+
+            if (elem.style.display === "none" || elem.style.display === "") {
+                elem.style.display = "block";
+                window.scrollTo({ top: elem.offsetTop - 20, behavior: 'smooth' });
+            } else {
+                elem.style.display = "none";
+            }
+        }
+    </script>
+</body>
+</html>

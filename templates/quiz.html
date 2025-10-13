@@ -14,7 +14,7 @@
                     <p><strong>{{ loop.index }}. {{ q.pergunta }}</strong></p>
                     {% for alt in q.alternativas %}
                         <label>
-                            <input type="radio" name="pergunta_{{ loop.index }}" value="{{ alt }}">
+                            <input type="radio" name="{{ q.id }}" value="{{ alt }}">
                             {{ alt }}
                         </label><br>
                     {% endfor %}

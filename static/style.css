@@ -8,6 +8,10 @@ body {
     margin: 0;
     padding: 0;
 }
+.logo {
+    width: 400px; /* ajuste o tamanho conforme necessário */
+    margin-bottom: 20px;
+}
 
 /* =========================
    CONTAINERS
@@ -56,6 +60,7 @@ p, li, span {
     list-style: disc inside;
     padding-left: 0;
 }
+
 
 .referencias a {
     color: #FFC300;

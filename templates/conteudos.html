@@ -30,6 +30,7 @@
                     <div class="acoes">
                         <a href="{{ url_for('ver_conteudo', conteudo_id=c.id) }}" class="btn abrir-conteudo">Acessar Conteúdo</a>
                         <a href="{{ url_for('quiz', conteudo_id=c.id) }}" class="btn">Fazer Quiz</a>
+                        <a href="{{ url_for('gerar_quiz', conteudo_id=c.id) }}" class="btn btn-warning">Gerar Quiz com IA</a>
                     </div>
 
                     {% if c.texto %}

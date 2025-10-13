@@ -1,0 +1,4 @@
+.env
+banco.db
+banco.bd
+__pycache__/

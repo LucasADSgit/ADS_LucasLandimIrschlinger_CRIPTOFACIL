@@ -1,27 +1,42 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <title>Quiz - CriptoFácil</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <div class="container">
-        <h1>Quiz - {{ trilha.titulo }}</h1>
-        <form method="POST">
-            {% for q in perguntas %}
-                <div class="pergunta">
-                    <p><strong>{{ loop.index }}. {{ q.pergunta }}</strong></p>
-                    {% for alt in q.alternativas %}
-                        <label>
-                            <input type="radio" name="{{ q.id }}" value="{{ alt }}">
-                            {{ alt }}
-                        </label><br>
-                    {% endfor %}
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-5">
+    <div class="card shadow-lg p-4 rounded-4">
+        <h2 class="text-center fw-bold mb-4">🧠 Quiz - {{ trilha.titulo }}</h2>
+
+        {% if perguntas %}
+            <form method="POST">
+                {% for q in perguntas %}
+                    <div class="mb-4">
+                        <p class="fw-semibold fs-5">{{ loop.index }}. {{ q.pergunta }}</p>
+                        <div class="list-group">
+                            {% for alt in q.alternativas %}
+                            <label class="list-group-item list-group-item-action">
+                                <input class="form-check-input me-2" type="radio" name="{{ q.id }}" value="{{ alt }}" required>
+                                {{ alt }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+
+                <div class="text-center mt-4">
+                    <button type="submit" class="btn btn-primary px-4 py-2 rounded-pill">
+                        Enviar Respostas
+                    </button>
                 </div>
-            {% endfor %}
-            <button type="submit" class="btn">Enviar Respostas</button>
-        </form>
+            </form>
+        {% else %}
+            <div class="alert alert-warning text-center">
+                ⚠️ Nenhuma pergunta disponível para este conteúdo no momento. <br>
+                Você pode gerar um quiz com IA clicando em "Gerar Quiz com IA" na página de conteúdo.
+            </div>
+            <div class="text-center mt-3">
+                <a href="{{ url_for('conteudos', trilha_id=trilha.id) }}" class="btn btn-secondary px-4 py-2 rounded-pill">Voltar aos Conteúdos</a>
+            </div>
+        {% endif %}
     </div>
-</body>
-</html>
+</div>
+
+{% endblock %}

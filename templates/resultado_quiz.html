@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-5 text-center">
+    <div class="card shadow-lg p-4 rounded-4">
+        <h2 class="mb-3 text-success fw-bold">🎉 Resultado do Quiz</h2>
+
+        <p class="fs-4">
+            Você acertou <strong>{{ acertos }}</strong> de <strong>{{ total }}</strong> perguntas!
+        </p>
+
+        {% if acertos == total %}
+        <div class="alert alert-success mt-3">
+            Excelente! Você dominou esse conteúdo! 💪
+        </div>
+        {% elif acertos >= total // 2 %}
+        <div class="alert alert-warning mt-3">
+            Muito bom! Continue praticando para acertar todas. ⚡
+        </div>
+        {% else %}
+        <div class="alert alert-danger mt-3">
+            Continue estudando — tente novamente mais tarde! 📘
+        </div>
+        {% endif %}
+
+        <div class="mt-4">
+            <a href="{{ url_for('trilhas') }}" class="btn btn-primary px-4 py-2 rounded-pill">Voltar às Trilhas</a>
+            <a href="{{ request.referrer or url_for('trilhas') }}" class="btn btn-outline-secondary px-4 py-2 rounded-pill ms-2">Tentar Novamente</a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

@@ -6,6 +6,7 @@ import os
 import json
 import ast
 import traceback
+import re
 
 # ======================
 # Configurações iniciais
@@ -204,7 +205,7 @@ def toggle_concluido(conteudo_id):
 # ======================
 # IA: gerar quiz automaticamente (robusto)
 # ======================
-def gerar_quiz_ia(conteudo_id):
+def gerar_quiz_ia_interno(conteudo_id):
     """Gera quiz via OpenAI e salva no banco adaptando-se ao schema existente."""
     conn = get_db_connection()
     conteudo = conn.execute("SELECT * FROM conteudos WHERE id=?", (conteudo_id,)).fetchone()
@@ -224,14 +225,13 @@ Retorne APENAS um JSON válido com uma lista de objetos no formato:
   {{
     "pergunta": "texto da pergunta",
     "alternativas": ["texto A","texto B","texto C","texto D"],
-    "resposta_correta": "a"   # use 'a'|'b'|'c'|'d' (letra)
+    "resposta_correta": "a"
   }}
 ]
 Conteúdo:
 {texto_para_ia}
 """
 
-    # chamada à OpenAI (pode lançar exceções: quota, chave inválida, etc.)
     try:
         resposta = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -240,30 +240,27 @@ Conteúdo:
             temperature=0.5
         )
         conteudo_resposta = resposta.choices[0].message.content.strip()
-    except Exception as e:
-        # devolve mensagem de erro (quota etc.) para frontend
-        return None, f"Erro ao chamar API da OpenAI: {e}"
+        print("Resposta IA (bruta):\n", conteudo_resposta)
 
-    # tenta parse JSON; se falhar, tenta ast.literal_eval (mais tolerante)
-    try:
-        quiz_json = json.loads(conteudo_resposta)
-        if not isinstance(quiz_json, list):
-            raise ValueError("JSON retornado não é lista")
-    except Exception:
-        try:
-            quiz_json = ast.literal_eval(conteudo_resposta)
-            if not isinstance(quiz_json, list):
-                raise ValueError("Resposta não é lista")
-        except Exception:
-            # log para debugging
-            print("Resposta IA (não-JSON):", conteudo_resposta)
-            traceback.print_exc()
-            return None, "IA retornou formato inválido"
+        # 🔹 Limpeza do JSON da IA (remove ```json ... ``` caso exista)
+        conteudo_resposta = conteudo_resposta.strip()
+        if conteudo_resposta.startswith("```"):
+            conteudo_resposta = conteudo_resposta.strip("`")
+            conteudo_resposta = conteudo_resposta.replace("json", "", 1).strip()
 
-    # Valida e normaliza cada item: queremos 'pergunta', 'alternativas' (lista 4), 'resposta_correta' (letra)
-    normalized = []
-    for item in quiz_json:
         try:
+            quiz_json = json.loads(conteudo_resposta)
+        except json.JSONDecodeError:
+            match = re.search(r"\[.*\]", conteudo_resposta, re.DOTALL)
+            if match:
+                quiz_json = json.loads(match.group(0))
+            else:
+                print("⚠️ Erro: IA retornou formato inválido\n", conteudo_resposta)
+                return None, "IA retornou formato inválido"
+
+        # Valida e normaliza
+        normalized = []
+        for item in quiz_json:
             p = item.get("pergunta") or item.get("question") or item.get("q")
             alts = item.get("alternativas") or item.get("alternatives") or item.get("choices")
             rc = item.get("resposta_correta") or item.get("answer") or item.get("correct")
@@ -271,63 +268,34 @@ Conteúdo:
                 rc = rc.strip().lower()[0]
             if not (p and isinstance(alts, (list, tuple)) and len(alts) >= 4 and rc in ("a","b","c","d")):
                 continue
-            # keep only first 4 alternatives
-            alts = [str(a) for a in alts[:4]]
-            normalized.append({"pergunta": str(p).strip(), "alternativas": alts, "resposta_correta": rc})
-        except Exception:
-            continue
+            normalized.append({"pergunta": str(p).strip(), "alternativas": [str(a) for a in alts[:4]], "resposta_correta": rc})
 
-    if not normalized:
-        return None, "IA gerou perguntas, mas nenhuma passou na validação"
+        if not normalized:
+            return None, "IA gerou perguntas, mas nenhuma passou na validação"
 
-    # Decide como salvar conforme schema da tabela quizzes:
-    has_alternativas_col = tabela_tem_coluna("quizzes", "alternativas")
-    has_alts_a_col = tabela_tem_coluna("quizzes", "alternativa_a")  # detecta schema antigo
-
-    conn = get_db_connection()
-    # evita duplicar: delete quizzes antigos para este conteudo (opcional)
-    conn.execute("DELETE FROM quizzes WHERE conteudo_id=?", (conteudo_id,))
-
-    if has_alternativas_col:
-        # salva como JSON na coluna 'alternativas'
+        # Salva no banco
+        conn = get_db_connection()
+        conn.execute("DELETE FROM quizzes WHERE conteudo_id=?", (conteudo_id,))
+        has_alternativas_col = tabela_tem_coluna("quizzes", "alternativas")
         for q in normalized:
-            conn.execute(
-                "INSERT INTO quizzes (conteudo_id, pergunta, alternativas, resposta_correta, gerado_por_ia) VALUES (?, ?, ?, ?, 1)",
-                (conteudo_id, q["pergunta"], json.dumps(q["alternativas"], ensure_ascii=False), q["resposta_correta"])
-            )
-    elif has_alts_a_col:
-        # salva no schema antigo com alternativa_a..d e resposta_correta como letra
-        for q in normalized:
-            a,b,c,d = q["alternativas"]
-            conn.execute(
-                "INSERT INTO quizzes (conteudo_id, pergunta, resposta_correta, alternativa_a, alternativa_b, alternativa_c, alternativa_d, gerado_por_ia) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
-                (conteudo_id, q["pergunta"], q["resposta_correta"], a, b, c, d)
-            )
-    else:
-        # schema inesperado: tenta inserir minimal (pergunta + resposta_correta) se possível
-        for q in normalized:
-            try:
+            if has_alternativas_col:
                 conn.execute(
-                    "INSERT INTO quizzes (conteudo_id, pergunta, resposta_correta, gerado_por_ia) VALUES (?, ?, ?, 1)",
-                    (conteudo_id, q["pergunta"], q["resposta_correta"])
+                    "INSERT INTO quizzes (conteudo_id, pergunta, alternativas, resposta_correta, gerado_por_ia) VALUES (?, ?, ?, ?, 1)",
+                    (conteudo_id, q["pergunta"], json.dumps(q["alternativas"], ensure_ascii=False), q["resposta_correta"])
                 )
-            except Exception:
-                # se nem isso for possível, ignora
-                continue
+        conn.commit()
+        conn.close()
+        return normalized, None
 
-    conn.commit()
-    conn.close()
-    return normalized, None
+    except Exception as e:
+        traceback.print_exc()
+        return None, f"Erro ao chamar API da OpenAI: {e}"
 
 @app.route("/gerar_quiz/<int:conteudo_id>")
-def gerar_quiz(conteudo_id):
-    if "usuario_id" not in session:
-        return redirect(url_for("login"))
-    quiz, err = gerar_quiz_ia(conteudo_id)
-    if quiz:
-        flash("✅ Quiz gerado com sucesso pela IA!", "success")
-    else:
-        flash(f"❌ Falha ao gerar quiz: {err}", "danger")
+def gerar_quiz_ia(conteudo_id):
+    quiz, erro = gerar_quiz_ia_interno(conteudo_id)
+    if erro:
+        return f"Erro: {erro}", 400
     return redirect(url_for("quiz", conteudo_id=conteudo_id))
 
 # ======================
@@ -340,7 +308,6 @@ def quiz(conteudo_id):
 
     conn = get_db_connection()
     quiz_rows = conn.execute("SELECT * FROM quizzes WHERE conteudo_id=?", (conteudo_id,)).fetchall()
-    # busca trilha para exibir título
     trilha = conn.execute("""
         SELECT t.* FROM trilhas t
         JOIN conteudos c ON c.trilha_id = t.id
@@ -349,17 +316,13 @@ def quiz(conteudo_id):
     conn.close()
 
     perguntas = []
-    # Detect schema and build perguntas
     if quiz_rows:
-        # inspect first row to see columns present
         row0 = dict(quiz_rows[0])
         if "alternativas" in row0 and row0["alternativas"] is not None:
-            # alternativas JSON stored
             for r in quiz_rows:
                 try:
                     alts = json.loads(r["alternativas"])
                 except Exception:
-                    # se por alguma razao não for JSON, tenta ast
                     try:
                         alts = ast.literal_eval(r["alternativas"])
                     except Exception:
@@ -371,7 +334,6 @@ def quiz(conteudo_id):
                     "resposta_correta": (r["resposta_correta"] or "").strip().lower()
                 })
         elif "alternativa_a" in row0:
-            # schema antigo: alternativa_a..d
             for r in quiz_rows:
                 alts = [r["alternativa_a"], r["alternativa_b"], r["alternativa_c"], r["alternativa_d"]]
                 perguntas.append({
@@ -380,38 +342,26 @@ def quiz(conteudo_id):
                     "alternativas": alts,
                     "resposta_correta": (r["resposta_correta"] or "").strip().lower()
                 })
-        else:
-            # fallback: no alternatives saved, try to show nothing
-            perguntas = []
 
-    # GET: renderiza
     if request.method == "GET":
-        # Se não há perguntas, mostra template com mensagem para gerar quiz
         if not perguntas:
             return render_template("quiz.html", trilha=trilha, perguntas=perguntas, msg_no_questions=True)
         return render_template("quiz.html", trilha=trilha, perguntas=perguntas)
 
-    # POST: avaliar respostas
     respostas = request.form
     acertos = 0
     for p in perguntas:
-        # name do input deve ser o id do quiz (conforme template)
         user_ans = respostas.get(str(p["id"]))
         if user_ans:
-            # se a resposta enviada for igual ao texto da alternativa correta, ou igual à letra
             correct_letter = p["resposta_correta"].lower()
-            # map letter to text
             letter_map = {"a": 0, "b": 1, "c": 2, "d": 3}
             try:
                 correct_text = p["alternativas"][letter_map[correct_letter]]
             except Exception:
                 correct_text = None
-
-            # comparação: aceita envio de letra (a,b,c...) ou do texto da alternativa
             if user_ans.strip().lower() == correct_letter or (correct_text and user_ans.strip() == correct_text):
                 acertos += 1
 
-    # Salva progresso (marca concluído e quiz_feito)
     conn = get_db_connection()
     conn.execute("""
         INSERT OR REPLACE INTO progresso (usuario_id, conteudo_id, concluido, quiz_feito)

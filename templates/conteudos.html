@@ -18,6 +18,7 @@
     <!-- Conteúdos -->
     <div class="container">
         <h1>Conteúdos da Trilha: {{ trilha.titulo }}</h1>
+
         <div class="conteudos-lista">
             {% for c in conteudos %}
                 <div class="conteudo-card">
@@ -30,7 +31,7 @@
                     <div class="acoes">
                         <a href="{{ url_for('ver_conteudo', conteudo_id=c.id) }}" class="btn abrir-conteudo">Acessar Conteúdo</a>
                         <a href="{{ url_for('quiz', conteudo_id=c.id) }}" class="btn">Fazer Quiz</a>
-                        <a href="{{ url_for('gerar_quiz', conteudo_id=c.id) }}" class="btn btn-warning">Gerar Quiz com IA</a>
+                        <a href="{{ url_for('gerar_quiz_ia', conteudo_id=c.id) }}" class="btn btn-warning">Gerar Quiz com IA</a>
                     </div>
 
                     {% if c.texto %}

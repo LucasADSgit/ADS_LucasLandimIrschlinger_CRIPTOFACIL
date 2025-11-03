@@ -1,31 +1,51 @@
 {% extends "base.html" %}
 {% block content %}
 
+<style>
+    body {
+        background-color: #000 !important;
+        color: #f5f5f5;
+    }
+</style>
+
 <div class="container mt-5 text-center">
-    <div class="card shadow-lg p-4 rounded-4">
-        <h2 class="mb-3 text-success fw-bold">🎉 Resultado do Quiz</h2>
+    <div class="card p-4 rounded-4 shadow-lg" 
+         style="background-color: #111; color: #f5f5f5; border: 1px solid #222;">
+        <h2 class="mb-3 fw-bold" style="color: #FFD700;">🎉 Resultado do Quiz</h2>
 
         <p class="fs-4">
-            Você acertou <strong>{{ acertos }}</strong> de <strong>{{ total }}</strong> perguntas!
+            Você acertou <strong style="color: #FFD700;">{{ acertos }}</strong> de <strong>{{ total }}</strong> perguntas!
         </p>
 
         {% if acertos == total %}
-        <div class="alert alert-success mt-3">
+        <div class="alert mt-3" 
+             style="background-color: #0f5132; color: #d1e7dd; border: 1px solid #198754;">
             Excelente! Você dominou esse conteúdo! 💪
         </div>
         {% elif acertos >= total // 2 %}
-        <div class="alert alert-warning mt-3">
+        <div class="alert mt-3" 
+             style="background-color: #664d03; color: #fff3cd; border: 1px solid #856404;">
             Muito bom! Continue praticando para acertar todas. ⚡
         </div>
         {% else %}
-        <div class="alert alert-danger mt-3">
+        <div class="alert mt-3" 
+             style="background-color: #842029; color: #f8d7da; border: 1px solid #dc3545;">
             Continue estudando — tente novamente mais tarde! 📘
         </div>
         {% endif %}
 
         <div class="mt-4">
-            <a href="{{ url_for('trilhas') }}" class="btn btn-primary px-4 py-2 rounded-pill">Voltar às Trilhas</a>
-            <a href="{{ request.referrer or url_for('trilhas') }}" class="btn btn-outline-secondary px-4 py-2 rounded-pill ms-2">Tentar Novamente</a>
+            <a href="{{ url_for('trilhas') }}" 
+               class="btn px-4 py-2 fw-semibold rounded-pill" 
+               style="background-color: #FFD700; color: #000; border: none;">
+               Voltar às Trilhas
+            </a>
+
+            <a href="{{ request.referrer or url_for('trilhas') }}" 
+               class="btn px-4 py-2 fw-semibold rounded-pill ms-2" 
+               style="background-color: #333; color: #FFD700; border: 1px solid #FFD700;">
+               Tentar Novamente
+            </a>
         </div>
     </div>
 </div>

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-5">
+    {% if trilha %}
+        <h2 class="mb-3" style="color:#FFD700;">📚 Conteúdos da Trilha: {{ trilha.titulo }}</h2>
+        <a href="{{ url_for('admin_conteudos_adicionar', trilha_id=trilha.id) }}" class="btn mb-3" style="background-color:#FFD700;color:#000;">Adicionar Novo Conteúdo</a>
+        <a href="{{ url_for('admin_trilhas') }}" class="btn mb-3" style="background-color:#333;color:#fff;">⬅ Voltar às Trilhas</a>
+    {% else %}
+        <h2 class="mb-3" style="color:#FFD700;">📚 Todos os Conteúdos</h2>
+        <a href="{{ url_for('admin_trilhas') }}" class="btn mb-3" style="background-color:#333;color:#fff;">⬅ Voltar às Trilhas</a>
+    {% endif %}
+
+    <table class="table table-dark table-striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Título</th>
+                <th>Descrição</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for c in conteudos %}
+            <tr>
+                <td>{{ c.id }}</td>
+                <td>{{ c.titulo }}</td>
+                <td>{{ c.descricao }}</td>
+                <td>
+                    {% if trilha %}
+                        <a href="{{ url_for('admin_conteudos_editar', trilha_id=trilha.id, id=c.id) }}" class="btn btn-sm" style="background-color:#333;color:#FFD700;">Editar</a>
+                        <a href="{{ url_for('admin_conteudos_excluir', trilha_id=trilha.id, id=c.id) }}" class="btn btn-sm" style="background-color:#842029;color:#fff;">Excluir</a>
+                    {% else %}
+                        <a href="#" class="btn btn-sm disabled" style="background-color:#333;color:#888;">Editar</a>
+                        <a href="#" class="btn btn-sm disabled" style="background-color:#842029;color:#888;">Excluir</a>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

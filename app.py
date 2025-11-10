@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, g
 from dotenv import load_dotenv
 from openai import OpenAI
 import sqlite3
@@ -16,7 +16,6 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "sua_chave_secreta_local")
 DATABASE = "banco.db"
 
-# Cliente OpenAI (pode lançar erro se chave/credito inválido)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # ======================
@@ -28,7 +27,6 @@ def get_db_connection():
     return conn
 
 def tabela_tem_coluna(table, column):
-    """Retorna True se tabela tiver a coluna dada (SQLite pragma)."""
     conn = get_db_connection()
     cur = conn.execute(f"PRAGMA table_info({table})").fetchall()
     conn.close()
@@ -46,8 +44,13 @@ def get_usuario_logado():
         return user
     return None
 
+def is_admin():
+    user = get_usuario_logado()
+    return user and user["is_admin"] == 1
+
+
 # ======================
-# Rotas básicas
+# Rotas de login/cadastro
 # ======================
 @app.route("/")
 def index():
@@ -59,21 +62,15 @@ def cadastro():
         nome = request.form["nome"]
         email = request.form["email"]
         senha = request.form["senha"]
-
         conn = get_db_connection()
         try:
             conn.execute("INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)", (nome, email, senha))
             conn.commit()
-            msg = None
         except sqlite3.IntegrityError:
-            msg = "Email já cadastrado!"
+            return render_template("cadastro.html", erro="Email já cadastrado!")
         finally:
             conn.close()
-
-        if msg:
-            return render_template("cadastro.html", erro=msg)
-        else:
-            return redirect(url_for("login"))
+        return redirect(url_for("login"))
     return render_template("cadastro.html", erro=None)
 
 @app.route("/login", methods=["GET", "POST"])
@@ -81,16 +78,15 @@ def login():
     if request.method == "POST":
         email = request.form["email"]
         senha = request.form["senha"]
-
         conn = get_db_connection()
         user = conn.execute("SELECT * FROM usuarios WHERE email=? AND senha=?", (email, senha)).fetchone()
         conn.close()
-
         if user:
             session["usuario_id"] = user["id"]
+            if user["is_admin"] == 1:
+                return redirect(url_for("admin_dashboard"))
             return redirect(url_for("trilhas"))
-        else:
-            return render_template("login.html", erro="Usuário ou senha incorretos")
+        return render_template("login.html", erro="Usuário ou senha incorretos")
     return render_template("login.html", erro=None)
 
 @app.route("/logout")
@@ -114,7 +110,7 @@ def perfil():
     return render_template("perfil.html", usuario=usuario, concluidos=concluidos)
 
 # ======================
-# Trilhas
+# Trilhas e Conteúdos Usuário
 # ======================
 @app.route("/trilhas")
 def trilhas():
@@ -126,9 +122,6 @@ def trilhas():
     usuario = get_usuario_logado()
     return render_template("trilhas.html", trilhas=trilhas, usuario=usuario)
 
-# ======================
-# Conteúdos
-# ======================
 @app.route("/trilha/<int:trilha_id>/conteudos")
 def conteudos(trilha_id):
     if "usuario_id" not in session:
@@ -142,46 +135,32 @@ def conteudos(trilha_id):
     usuario = get_usuario_logado()
     return render_template("conteudos.html", trilha=trilha, conteudos=conteudos, usuario=usuario)
 
-# ======================
-# Ver conteúdo detalhado
-# ======================
 @app.route("/conteudo/<int:conteudo_id>")
 def ver_conteudo(conteudo_id):
     if "usuario_id" not in session:
         return redirect(url_for("login"))
-
     conn = get_db_connection()
     conteudo = conn.execute("SELECT * FROM conteudos WHERE id=?", (conteudo_id,)).fetchone()
-    if not conteudo:
-        conn.close()
-        return "Conteúdo não encontrado!"
-
     progresso = conn.execute(
         "SELECT concluido FROM progresso WHERE usuario_id=? AND conteudo_id=?",
         (session["usuario_id"], conteudo_id)
     ).fetchone()
-
     usuario_concluido = progresso["concluido"] == 1 if progresso else False
     usuario = get_usuario_logado()
     conn.close()
     return render_template("conteudo.html", conteudo=conteudo, usuario=usuario, usuario_concluido=usuario_concluido)
 
-# ======================
-# Marcar como concluído
-# ======================
 @app.route("/toggle_concluido/<int:conteudo_id>", methods=["POST"])
 def toggle_concluido(conteudo_id):
     if "usuario_id" not in session:
         return jsonify({"error": "Usuário não logado"}), 403
-
     usuario_id = session["usuario_id"]
     conn = get_db_connection()
-
     progresso = conn.execute(
         "SELECT concluido FROM progresso WHERE usuario_id=? AND conteudo_id=?",
         (usuario_id, conteudo_id)
     ).fetchone()
-
+    novo_status = 1
     if progresso:
         novo_status = 0 if progresso["concluido"] == 1 else 1
         conn.execute(
@@ -189,12 +168,10 @@ def toggle_concluido(conteudo_id):
             (novo_status, usuario_id, conteudo_id)
         )
     else:
-        novo_status = 1
         conn.execute(
             "INSERT INTO progresso (usuario_id, conteudo_id, concluido, quiz_feito) VALUES (?, ?, 1, 0)",
             (usuario_id, conteudo_id)
         )
-
     conn.commit()
     total_concluidos = conn.execute(
         "SELECT COUNT(*) FROM progresso WHERE usuario_id=? AND concluido=1", (usuario_id,)
@@ -202,6 +179,9 @@ def toggle_concluido(conteudo_id):
     conn.close()
     return jsonify({"concluido": novo_status, "total_concluidos": total_concluidos})
 
+# ======================
+# Quiz IA
+# ======================
 # ======================
 # IA: gerar quiz automaticamente (robusto)
 # ======================
@@ -240,10 +220,8 @@ Conteúdo:
             temperature=0.5
         )
         conteudo_resposta = resposta.choices[0].message.content.strip()
-        print("Resposta IA (bruta):\n", conteudo_resposta)
 
         # 🔹 Limpeza do JSON da IA (remove ```json ... ``` caso exista)
-        conteudo_resposta = conteudo_resposta.strip()
         if conteudo_resposta.startswith("```"):
             conteudo_resposta = conteudo_resposta.strip("`")
             conteudo_resposta = conteudo_resposta.replace("json", "", 1).strip()
@@ -255,25 +233,35 @@ Conteúdo:
             if match:
                 quiz_json = json.loads(match.group(0))
             else:
-                print("⚠️ Erro: IA retornou formato inválido\n", conteudo_resposta)
                 return None, "IA retornou formato inválido"
 
-        # Valida e normaliza
+        # 🔹 Valida e normaliza com robustez
         normalized = []
         for item in quiz_json:
             p = item.get("pergunta") or item.get("question") or item.get("q")
             alts = item.get("alternativas") or item.get("alternatives") or item.get("choices")
             rc = item.get("resposta_correta") or item.get("answer") or item.get("correct")
+
+            # Se rc é string, pega a primeira letra minúscula
             if isinstance(rc, str) and len(rc) >= 1:
                 rc = rc.strip().lower()[0]
-            if not (p and isinstance(alts, (list, tuple)) and len(alts) >= 4 and rc in ("a","b","c","d")):
+
+            # Garantir que alternativas sejam uma lista de pelo menos 4
+            if not isinstance(alts, (list, tuple)) or len(alts) < 4:
                 continue
-            normalized.append({"pergunta": str(p).strip(), "alternativas": [str(a) for a in alts[:4]], "resposta_correta": rc})
+
+            # Só aceita respostas corretas válidas
+            if p and rc in ("a","b","c","d"):
+                normalized.append({
+                    "pergunta": str(p).strip(),
+                    "alternativas": [str(a).strip() for a in alts[:4]],
+                    "resposta_correta": rc
+                })
 
         if not normalized:
             return None, "IA gerou perguntas, mas nenhuma passou na validação"
 
-        # Salva no banco
+        # 🔹 Salva no banco
         conn = get_db_connection()
         conn.execute("DELETE FROM quizzes WHERE conteudo_id=?", (conteudo_id,))
         has_alternativas_col = tabela_tem_coluna("quizzes", "alternativas")
@@ -291,86 +279,238 @@ Conteúdo:
         traceback.print_exc()
         return None, f"Erro ao chamar API da OpenAI: {e}"
 
+
 @app.route("/gerar_quiz/<int:conteudo_id>")
 def gerar_quiz_ia(conteudo_id):
     quiz, erro = gerar_quiz_ia_interno(conteudo_id)
-    if erro:
-        return f"Erro: {erro}", 400
+    if erro: return f"Erro: {erro}", 400
     return redirect(url_for("quiz", conteudo_id=conteudo_id))
 
-# ======================
-# Quiz - leitura e submissão
-# ======================
-@app.route("/quiz/<int:conteudo_id>", methods=["GET", "POST"])
+@app.route("/quiz/<int:conteudo_id>", methods=["GET","POST"])
 def quiz(conteudo_id):
-    if "usuario_id" not in session:
-        return redirect(url_for("login"))
-
+    if "usuario_id" not in session: return redirect(url_for("login"))
     conn = get_db_connection()
-    quiz_rows = conn.execute("SELECT * FROM quizzes WHERE conteudo_id=?", (conteudo_id,)).fetchall()
-    trilha = conn.execute("""
-        SELECT t.* FROM trilhas t
-        JOIN conteudos c ON c.trilha_id = t.id
-        WHERE c.id = ?
-    """, (conteudo_id,)).fetchone()
+    quiz_rows = conn.execute("SELECT * FROM quizzes WHERE conteudo_id=?",(conteudo_id,)).fetchall()
+    trilha = conn.execute("SELECT t.* FROM trilhas t JOIN conteudos c ON c.trilha_id=t.id WHERE c.id=?",(conteudo_id,)).fetchone()
     conn.close()
-
     perguntas = []
-    if quiz_rows:
-        row0 = dict(quiz_rows[0])
-        if "alternativas" in row0 and row0["alternativas"] is not None:
-            for r in quiz_rows:
-                try:
-                    alts = json.loads(r["alternativas"])
-                except Exception:
-                    try:
-                        alts = ast.literal_eval(r["alternativas"])
-                    except Exception:
-                        alts = []
-                perguntas.append({
-                    "id": r["id"],
-                    "pergunta": r["pergunta"],
-                    "alternativas": alts,
-                    "resposta_correta": (r["resposta_correta"] or "").strip().lower()
-                })
-        elif "alternativa_a" in row0:
-            for r in quiz_rows:
-                alts = [r["alternativa_a"], r["alternativa_b"], r["alternativa_c"], r["alternativa_d"]]
-                perguntas.append({
-                    "id": r["id"],
-                    "pergunta": r["pergunta"],
-                    "alternativas": alts,
-                    "resposta_correta": (r["resposta_correta"] or "").strip().lower()
-                })
-
-    if request.method == "GET":
-        if not perguntas:
-            return render_template("quiz.html", trilha=trilha, perguntas=perguntas, msg_no_questions=True)
+    for r in quiz_rows:
+        try:
+            alts = json.loads(r["alternativas"])
+        except:
+            try: alts=ast.literal_eval(r["alternativas"])
+            except: alts=[]
+        perguntas.append({"id":r["id"],"pergunta":r["pergunta"],"alternativas":alts,"resposta_correta":(r["resposta_correta"] or "").strip().lower()})
+    if request.method=="GET":
+        if not perguntas: return render_template("quiz.html", trilha=trilha, perguntas=perguntas, msg_no_questions=True)
         return render_template("quiz.html", trilha=trilha, perguntas=perguntas)
-
     respostas = request.form
     acertos = 0
     for p in perguntas:
         user_ans = respostas.get(str(p["id"]))
-        if user_ans:
-            correct_letter = p["resposta_correta"].lower()
-            letter_map = {"a": 0, "b": 1, "c": 2, "d": 3}
-            try:
-                correct_text = p["alternativas"][letter_map[correct_letter]]
-            except Exception:
-                correct_text = None
-            if user_ans.strip().lower() == correct_letter or (correct_text and user_ans.strip() == correct_text):
-                acertos += 1
-
+        if user_ans and user_ans.strip().lower()==p["resposta_correta"]: acertos+=1
     conn = get_db_connection()
-    conn.execute("""
-        INSERT OR REPLACE INTO progresso (usuario_id, conteudo_id, concluido, quiz_feito)
-        VALUES (?, ?, 1, 1)
-    """, (session["usuario_id"], conteudo_id))
+    conn.execute("INSERT OR REPLACE INTO progresso (usuario_id, conteudo_id, concluido, quiz_feito) VALUES (?,?,1,1)",
+                 (session["usuario_id"],conteudo_id))
     conn.commit()
     conn.close()
-
     return render_template("resultado_quiz.html", acertos=acertos, total=len(perguntas))
+
+# ======================
+# Admin
+# ======================
+@app.route("/admin")
+def admin_dashboard():
+    if not is_admin(): return redirect(url_for("login"))
+    return render_template("admin_dashboard.html")
+
+# Admin - Trilhas
+@app.route("/admin/trilhas")
+def admin_trilhas():
+    if not is_admin(): return redirect(url_for("login"))
+    conn = get_db_connection()
+    trilhas = conn.execute("SELECT * FROM trilhas").fetchall()
+    conn.close()
+    return render_template("admin_trilhas.html", trilhas=trilhas)
+
+# Nova função: Adicionar Trilha
+@app.route("/admin/trilhas/adicionar", methods=["GET","POST"])
+def admin_trilhas_adicionar():
+    if not is_admin():
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        titulo = request.form.get("titulo")
+        descricao = request.form.get("descricao")
+        nivel = request.form.get("nivel")
+        conn = get_db_connection()
+        conn.execute("INSERT INTO trilhas (titulo, descricao, nivel) VALUES (?, ?, ?)", (titulo, descricao, nivel))
+        conn.commit()
+        conn.close()
+        return redirect(url_for("admin_trilhas"))
+
+    return render_template("admin_trilhas_form.html", acao="Adicionar")
+
+# Editar Trilha
+@app.route("/admin/trilhas/editar/<int:id>", methods=["GET", "POST"])
+def admin_trilhas_editar(id):
+    if not is_admin():
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    trilha = conn.execute("SELECT * FROM trilhas WHERE id=?", (id,)).fetchone()
+
+    if not trilha:
+        conn.close()
+        return "Trilha não encontrada!"
+
+    if request.method == "POST":
+        titulo = request.form.get("titulo")
+        descricao = request.form.get("descricao")
+        nivel = request.form.get("nivel")
+        conn.execute("UPDATE trilhas SET titulo=?, descricao=?, nivel=? WHERE id=?", (titulo, descricao, nivel, id))
+        conn.commit()
+        conn.close()
+        return redirect(url_for("admin_trilhas"))
+
+    conn.close()
+    return render_template("admin_trilhas_form.html", acao="Editar", trilha=trilha)
+
+
+# Excluir Trilha
+@app.route("/admin/trilhas/excluir/<int:id>", methods=["POST", "GET"])
+def admin_trilhas_excluir(id):
+    if not is_admin():
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    trilha = conn.execute("SELECT * FROM trilhas WHERE id=?", (id,)).fetchone()
+    if not trilha:
+        conn.close()
+        return "Trilha não encontrada!"
+
+    # Remove também os conteúdos relacionados
+    conn.execute("DELETE FROM conteudos WHERE trilha_id=?", (id,))
+    conn.execute("DELETE FROM trilhas WHERE id=?", (id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("admin_trilhas"))
+
+
+# Nova função: Ver Conteúdos de uma Trilha
+@app.route("/admin/trilha/<int:trilha_id>/conteudos")
+def admin_conteudos_trilha(trilha_id):
+    if not is_admin():
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    trilha = conn.execute("SELECT * FROM trilhas WHERE id=?", (trilha_id,)).fetchone()
+    if not trilha:
+        conn.close()
+        return "Trilha não encontrada!"
+    conteudos = conn.execute("SELECT * FROM conteudos WHERE trilha_id=?", (trilha_id,)).fetchall()
+    conn.close()
+    return render_template("admin_conteudos.html", trilha=trilha, conteudos=conteudos)
+
+# Adicionar Conteúdo
+@app.route("/admin/trilha/<int:trilha_id>/conteudos/adicionar", methods=["GET", "POST"])
+def admin_conteudos_adicionar(trilha_id):
+    if not is_admin():
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    trilha = conn.execute("SELECT * FROM trilhas WHERE id=?", (trilha_id,)).fetchone()
+    if not trilha:
+        conn.close()
+        return "Trilha não encontrada!"
+
+    if request.method == "POST":
+        titulo = request.form.get("titulo")
+        descricao = request.form.get("descricao")
+        texto = request.form.get("texto")
+
+        conn.execute(
+            "INSERT INTO conteudos (trilha_id, titulo, descricao, texto) VALUES (?, ?, ?, ?)",
+            (trilha_id, titulo, descricao, texto)
+        )
+        conn.commit()
+        conn.close()
+        return redirect(url_for("admin_conteudos_trilha", trilha_id=trilha_id))
+
+    conn.close()
+    return render_template("admin_conteudos_form.html", trilha=trilha, conteudo=None)
+
+
+# Editar Conteúdo
+@app.route("/admin/trilha/<int:trilha_id>/conteudos/editar/<int:id>", methods=["GET", "POST"])
+def admin_conteudos_editar(trilha_id, id):
+    if not is_admin():
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    conteudo = conn.execute("SELECT * FROM conteudos WHERE id=?", (id,)).fetchone()
+    trilha = conn.execute("SELECT * FROM trilhas WHERE id=?", (trilha_id,)).fetchone()
+
+    if not conteudo:
+        conn.close()
+        return "Conteúdo não encontrado!"
+
+    if request.method == "POST":
+        titulo = request.form.get("titulo")
+        descricao = request.form.get("descricao")
+        texto = request.form.get("texto")
+
+        conn.execute(
+            "UPDATE conteudos SET titulo=?, descricao=?, texto=? WHERE id=?",
+            (titulo, descricao, texto, id)
+        )
+        conn.commit()
+        conn.close()
+        return redirect(url_for("admin_conteudos_trilha", trilha_id=trilha_id))
+
+    conn.close()
+    return render_template("admin_conteudos_form.html", trilha=trilha, conteudo=conteudo)
+
+
+# Excluir Conteúdo
+@app.route("/admin/trilha/<int:trilha_id>/conteudos/excluir/<int:id>", methods=["GET", "POST"])
+def admin_conteudos_excluir(trilha_id, id):
+    if not is_admin():
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    conn.execute("DELETE FROM conteudos WHERE id=?", (id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("admin_conteudos_trilha", trilha_id=trilha_id))
+
+
+# Admin - Conteúdos
+@app.route("/admin/conteudos")
+def admin_conteudos():
+    if not is_admin():
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    conteudos = conn.execute("""
+        SELECT c.*, t.titulo AS trilha_titulo
+        FROM conteudos c
+        JOIN trilhas t ON c.trilha_id = t.id
+    """).fetchall()
+    conn.close()
+
+    return render_template("admin_conteudos.html", conteudos=conteudos, trilha=None)
+
+
+@app.context_processor
+def inject_user():
+    usuario = None
+    if "usuario_id" in session:
+        # Busca o usuário no banco de dados
+        conn = get_db_connection()  # sua função para conectar ao SQLite
+        usuario = conn.execute("SELECT * FROM usuarios WHERE id = ?", (session["usuario_id"],)).fetchone()
+        conn.close()
+    return dict(usuario=usuario)
 
 # ======================
 # Rodar app

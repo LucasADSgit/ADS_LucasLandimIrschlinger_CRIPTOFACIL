@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-5">
+    <h2 class="mb-4" style="color:#FFD700;">
+        {% if acao == 'Editar' %}✏️ Editar Trilha{% else %}➕ Adicionar Nova Trilha{% endif %}
+    </h2>
+
+    <form method="POST">
+        <div class="mb-3">
+            <label class="form-label">Título:</label>
+            <input type="text" class="form-control bg-dark text-light" name="titulo" required
+                   value="{{ trilha.titulo if trilha else '' }}">
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Descrição:</label>
+            <textarea class="form-control bg-dark text-light" name="descricao" rows="6" required>{{ trilha.descricao if trilha else '' }}</textarea>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Nível:</label>
+            <select name="nivel" class="form-select bg-dark text-light" required>
+                {% set niveis = ['Iniciante', 'Intermediário', 'Avançado'] %}
+                {% for n in niveis %}
+                <option value="{{ n }}" {% if trilha and trilha.nivel == n %}selected{% endif %}>{{ n }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn salvar-btn">
+                {% if acao == 'Editar' %}Salvar Alterações{% else %}Adicionar Trilha{% endif %}
+            </button>
+            <a href="{{ url_for('admin_trilhas') }}" class="btn voltar-btn">Voltar</a>
+        </div>
+    </form>
+</div>
+
+<style>
+.salvar-btn { background-color: #FFD700; color: #000; font-weight: bold; border: none; }
+.voltar-btn { background-color: #333; color: #fff; margin-left: 10px; text-decoration: none; }
+.form-control, .form-select { border: 1px solid #FFD700; }
+textarea.form-control { font-family: "Courier New", monospace; resize: vertical; }
+</style>
+{% endblock %}

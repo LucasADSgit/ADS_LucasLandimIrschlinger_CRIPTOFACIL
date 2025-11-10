@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block top_bar %}
+<div class="top-bar bg-dark text-white d-flex justify-content-between align-items-center p-2">
+    <div class="user-info ms-3">
+        Olá, bem-vindo {{ usuario.nome if usuario else '' }}
+    </div>
+    <div class="top-bar-buttons me-3">
+        <a href="{{ url_for('logout') }}" class="btn btn-danger btn-sm">Logout</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Painel Administrativo</h1>
+    <p>Bem-vindo, administrador! Escolha o que deseja gerenciar:</p>
+
+    <div class="admin-opcoes">
+        <a href="{{ url_for('admin_trilhas') }}" class="btn">📚 Gerenciar Trilhas</a>
+        <a href="{{ url_for('admin_conteudos') }}" class="btn">🧩 Gerenciar Conteúdos</a>
+    </div>
+</div>
+
+<style>
+.admin-opcoes {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-top: 40px;
+    align-items: center;
+}
+
+.admin-opcoes .btn {
+    width: 250px;
+    font-size: 1.1em;
+    text-align: center;
+    background-color: #FFD700;
+    color: #000;
+    padding: 10px;
+    border-radius: 8px;
+    text-decoration: none;
+}
+</style>
+{% endblock %}

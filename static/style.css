@@ -123,6 +123,16 @@ p, li, span {
     width: 200px;
 }
 
+.btn.btn-danger {
+    background-color: #FF4444; /* vermelho */
+    color: #fff;
+}
+
+.btn.btn-danger:hover {
+    background-color: #d93636;
+}
+
+
 /* BOTÃO LOGOUT */
 .logout-btn {
     background-color: #FF4444;

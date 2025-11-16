@@ -26,6 +26,58 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+def gerar_feedback_ia(perguntas, respostas_usuario):
+    """
+    Gera um texto com:
+    - A pergunta
+    - Alternativa escolhida (letra + texto)
+    - Alternativa correta (letra + texto)
+    Aceita perguntas como dicionários.
+    """
+
+    detalhes = []
+
+    for q in perguntas:
+        correta_letra = q["resposta_correta"]
+        alternativas = q["alternativas"]  # lista com os textos
+
+        # converter letra da resposta correta para texto
+        idx_correta = ['a', 'b', 'c', 'd'].index(correta_letra)
+        texto_correto = alternativas[idx_correta]
+
+        # converter letra escolhida pelo usuário para texto
+        letra_escolhida = respostas_usuario.get(str(q["id"]))
+        if letra_escolhida in ['a', 'b', 'c', 'd']:
+            idx_escolhida = ['a', 'b', 'c', 'd'].index(letra_escolhida)
+            texto_escolhido = alternativas[idx_escolhida]
+        else:
+            texto_escolhido = "Nenhuma resposta selecionada"
+
+        detalhes.append(
+            f"Pergunta: {q['pergunta']}\n"
+            f"Resposta do usuário: ({letra_escolhida}) {texto_escolhido}\n"
+            f"Resposta correta: ({correta_letra}) {texto_correto}\n"
+        )
+
+    prompt = (
+        "Analise as respostas do usuário no quiz abaixo e gere um feedback curto, "
+        "direto e útil, destacando onde ele precisa melhorar e sugerindo o que estudar:\n\n"
+        + "\n".join(detalhes)
+    )
+
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Você é uma IA expert em educação e aprendizado."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        print("Erro ao gerar feedback:", e)
+        return "Não foi possível gerar um feedback no momento."
+
 def tabela_tem_coluna(table, column):
     conn = get_db_connection()
     cur = conn.execute(f"PRAGMA table_info({table})").fetchall()
@@ -304,17 +356,34 @@ def quiz(conteudo_id):
     if request.method=="GET":
         if not perguntas: return render_template("quiz.html", trilha=trilha, perguntas=perguntas, msg_no_questions=True)
         return render_template("quiz.html", trilha=trilha, perguntas=perguntas)
+    # POST
     respostas = request.form
     acertos = 0
+
     for p in perguntas:
         user_ans = respostas.get(str(p["id"]))
-        if user_ans and user_ans.strip().lower()==p["resposta_correta"]: acertos+=1
+        if user_ans and user_ans.strip().lower() == p["resposta_correta"]:
+            acertos += 1
+
+    # Salvar progresso
     conn = get_db_connection()
-    conn.execute("INSERT OR REPLACE INTO progresso (usuario_id, conteudo_id, concluido, quiz_feito) VALUES (?,?,1,1)",
-                 (session["usuario_id"],conteudo_id))
+    conn.execute(
+        "INSERT OR REPLACE INTO progresso (usuario_id, conteudo_id, concluido, quiz_feito) VALUES (?,?,1,1)",
+        (session["usuario_id"], conteudo_id)
+    )
     conn.commit()
     conn.close()
-    return render_template("resultado_quiz.html", acertos=acertos, total=len(perguntas))
+
+    # 👉 Novo: gerar feedback da IA
+    feedback = gerar_feedback_ia(perguntas, respostas)
+
+    return render_template(
+        "resultado_quiz.html",
+        acertos=acertos,
+        total=len(perguntas),
+        feedback=feedback
+    )
+
 
 # ======================
 # Admin

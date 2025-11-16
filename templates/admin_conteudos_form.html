@@ -1,5 +1,10 @@
 {% extends "base.html" %}
+{% block body_class %}admin-area{% endblock %}
 {% block content %}
+
+<!-- Summernote CSS -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/summernote/0.8.20/summernote-lite.min.css" rel="stylesheet">
+
 <div class="container mt-5">
     <h2 class="mb-3" style="color:#FFD700;">
         {{ conteudo and "✏️ Editar Conteúdo" or "➕ Adicionar Novo Conteúdo" }}
@@ -7,64 +12,59 @@
 
     <form method="post">
         <div class="mb-3">
-            <label for="titulo" class="form-label">Título:</label>
-            <input type="text" id="titulo" name="titulo" value="{{ conteudo.titulo if conteudo else '' }}" required>
+            <label class="form-label">Título:</label>
+            <input type="text" name="titulo" class="form-control"
+                   value="{{ conteudo.titulo if conteudo else '' }}" required>
         </div>
 
         <div class="mb-3">
-            <label for="descricao" class="form-label">Descrição:</label>
-            <textarea id="descricao" name="descricao" required>{{ conteudo.descricao if conteudo else '' }}</textarea>
+            <label class="form-label">Descrição:</label>
+            <textarea name="descricao" class="form-control" required>{{ conteudo.descricao if conteudo else '' }}</textarea>
         </div>
 
         <div class="mb-3">
-            <label for="texto" class="form-label">Texto completo do conteúdo:</label>
-            <textarea id="texto" name="texto" required>{{ conteudo.texto if conteudo else '' }}</textarea>
+            <label class="form-label">Texto completo do conteúdo:</label>
+            <textarea id="editor" name="texto">{{ conteudo.texto | safe if conteudo else '' }}</textarea>
         </div>
 
-        <div class="d-flex justify-content-start">
-            <button type="submit" class="btn salvar-btn me-2">Salvar</button>
-            <a href="{{ url_for('admin_conteudos_trilha', trilha_id=trilha.id) }}" class="btn voltar-btn">Voltar</a>
-        </div>
+        <button type="submit" class="btn salvar-btn me-2">Salvar</button>
+        <a href="{{ url_for('admin_conteudos_trilha', trilha_id=trilha.id) }}" class="btn voltar-btn">Voltar</a>
     </form>
 </div>
 
+<!-- Summernote JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/summernote/0.8.20/summernote-lite.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    $('#editor').summernote({
+        placeholder: 'Escreva o conteúdo aqui...',
+        tabsize: 2,
+        height: 350,
+        minHeight: 300,
+        maxHeight: null,
+        toolbar: [
+            ['style', ['bold', 'italic', 'underline', 'clear']],
+            ['font', ['fontsize', 'color']],
+            ['para', ['ul', 'ol', 'paragraph']],
+            ['insert', ['link', 'picture', 'video']],
+            ['view', ['codeview']]
+        ]
+    });
+});
+</script>
+
 <style>
-form {
-    max-width: 800px;
-    margin: 0 auto;
-}
-
-input, textarea {
-    width: 100%;
-    margin-bottom: 15px;
-    padding: 12px;
-    border-radius: 8px;
-    border: 1px solid #444;
-    background-color: #1c1c1c;
+.note-editor.note-frame {
+    background-color: #121212;
     color: #e0e0e0;
-    font-size: 1em;
 }
 
-textarea {
-    min-height: 200px;
-    resize: vertical; /* permite aumentar manualmente */
-}
-
-.salvar-btn {
-    background-color: #FFD700;
-    color: #000;
-    font-weight: bold;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 8px;
-}
-
-.voltar-btn {
-    background-color: #333;
-    color: #fff;
-    padding: 10px 20px;
-    border-radius: 8px;
-    text-decoration: none;
+.note-editable {
+    background-color: #1c1c1c !important;
+    color: #fff !important;
 }
 </style>
+
 {% endblock %}

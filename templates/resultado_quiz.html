@@ -34,6 +34,16 @@
         </div>
         {% endif %}
 
+        <!-- 🔥 BLOCO DE FEEDBACK DA IA (INSERIDO AQUI) -->
+        {% if feedback %}
+        <div class="mt-4 p-3 rounded-4"
+            style="background-color:#222; color:#FFD700; border:1px solid #444;">
+            <h4 class="fw-bold mb-2">💡 Feedback Personalizado</h4>
+            <p style="white-space: pre-line;">{{ feedback }}</p>
+        </div>
+        {% endif %}
+        <!-- 🔥 FIM DO BLOCO FEEDBACK -->
+
         <div class="mt-4">
             <a href="{{ url_for('trilhas') }}" 
                class="btn px-4 py-2 fw-semibold rounded-pill" 

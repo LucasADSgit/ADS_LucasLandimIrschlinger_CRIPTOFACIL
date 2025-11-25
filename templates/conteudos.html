@@ -23,16 +23,69 @@
             {% for c in conteudos %}
                 <div class="conteudo-card">
                     <h2>{{ c.titulo }}</h2>
+
                     {% if c.descricao %}
                         <p>{{ c.descricao }}</p>
                     {% endif %}
 
-                    <!-- Botões de ações -->
+                    <!-- Botões de ações originais -->
+                    
                     <div class="acoes">
                         <a href="{{ url_for('ver_conteudo', conteudo_id=c.id) }}" class="btn abrir-conteudo">Acessar Conteúdo</a>
                         <a href="{{ url_for('quiz', conteudo_id=c.id) }}" class="btn">Fazer Quiz</a>
-                        <a href="{{ url_for('gerar_quiz_ia', conteudo_id=c.id) }}" class="btn btn-warning">Gerar Quiz com IA</a>
+
+                        {% if c.tem_quiz %}
+                            {% if c.quiz_concluido %}
+                                <span class="btn-quiz-concluido">✅ Quiz Concluído</span>
+                            {% else %}
+                                <span class="btn-quiz-nao-concluido">❌ Quiz Não Concluído</span>
+                            {% endif %}
+                        {% endif %}
                     </div>
+                    <!-- ===================================================== -->
+                    <!-- CONFIGURAÇÃO DO QUIZ GERADO POR IA (ATUALIZADO) -->
+                    <!-- ===================================================== -->
+
+                    <form action="{{ url_for('gerar_quiz_ia', conteudo_id=c.id) }}" method="POST" style="margin-top: 12px;" onsubmit="return validarQuizIA(this)">
+                        <div class="acoes" style="gap: 10px; display: flex; flex-wrap: wrap;">
+
+                            <!-- Seletor de dificuldade -->
+                            <select name="dificuldade" class="select-quiz">
+                                <option value="facil">Fácil</option>
+                                <option value="medio">Médio</option>
+                                <option value="dificil">Difícil</option>
+                            </select>
+
+                            <!-- Input NUMÉRICO para quantidade -->
+                            <input type="number"
+                                name="quantidade"
+                                min="1"
+                                max="15"
+                                placeholder="Nº de perguntas (1–15)"
+                                class="select-quiz"
+                                style="width: 180px; text-align: center;">
+
+                            <!-- Botão gerar quiz -->
+                            {% if c.tem_quiz %}
+                                <button type="submit" class="btn btn-warning">Gerar Quiz Novamente</button>
+                            {% else %}
+                                <button type="submit" class="btn btn-warning">Gerar Quiz com IA</button>
+                            {% endif %}
+
+                        </div>
+                    </form>
+
+                    <!-- SE JÁ EXISTIR QUIZ GERADO MOSTRA OPÇÕES EXTRAS -->
+                
+                    {% if c.tem_quiz %}
+                        <div class="acoes" style="margin-top: 10px; gap: 10px;">
+                            <!-- Botão apagar quiz -->
+                            <form action="{{ url_for('excluir_quiz', conteudo_id=c.id, trilha_id=trilha.id) }}" method="POST">
+                                <button class="btn btn-danger">Excluir Quiz</button>
+                            </form>
+                        </div>
+                    {% endif %}
+
 
                     {% if c.texto %}
                         <div id="conteudo-{{ c.id }}" class="conteudo-texto" style="display:none;">
@@ -61,5 +114,16 @@
             }
         }
     </script>
+    <script>
+    function validarQuizIA(form) {
+        const quantidade = form.quantidade.value;
+        if (!quantidade || quantidade < 1 || quantidade > 15) {
+            alert("Por favor, informe um número de perguntas entre 1 e 15.");
+            return false; // impede o envio do formulário
+        }
+        return true; // permite envio se tudo estiver ok
+    }
+    </script>
+
 </body>
 </html>

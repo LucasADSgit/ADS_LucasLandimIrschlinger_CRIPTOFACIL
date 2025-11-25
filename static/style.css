@@ -343,3 +343,36 @@ body.admin-area input[type="password"],
 body.admin-area textarea {
     width: 100% !important;
 }
+
+.quiz-concluido {
+    color: green;
+    font-weight: bold;
+    margin-left: 10px;
+    display: inline-block;
+}
+/* Botões de status do quiz */
+.btn-quiz-concluido {
+    background-color: #28a745; /* verde */
+    color: white;
+    padding: 6px 12px;
+    border-radius: 5px;
+    font-size: 0.9rem;
+    text-align: center;
+    display: inline-block;
+}
+
+.btn-quiz-nao-concluido {
+    background-color: #dc3545; /* vermelho */
+    color: white;
+    padding: 6px 12px;
+    border-radius: 5px;
+    font-size: 0.9rem;
+    text-align: center;
+    display: inline-block;
+}
+
+/* Espaçamento com outros botões na mesma linha */
+.conteudo-card .acoes .btn-quiz-concluido,
+.conteudo-card .acoes .btn-quiz-nao-concluido {
+    margin-left: 5px;
+}

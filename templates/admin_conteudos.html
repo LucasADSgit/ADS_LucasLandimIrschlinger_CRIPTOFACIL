@@ -1,5 +1,17 @@
 {% extends "base.html" %}
+{% block top_bar %}
+<div class="top-bar bg-dark text-white d-flex justify-content-between align-items-center p-2">
+    <div class="user-info ms-3">
+        Olá, bem-vindo {{ usuario.nome if usuario else '' }}
+    </div>
+    <div class="top-bar-buttons me-3">
+        <a href="{{ url_for('logout') }}" class="btn btn-danger btn-sm">Logout</a>
+    </div>
+</div>
+{% endblock %}
+
 {% block content %}
+
 <div class="container mt-5">
     {% if trilha %}
         <h2 class="mb-3" style="color:#FFD700;">📚 Conteúdos da Trilha: {{ trilha.titulo }}</h2>
@@ -9,6 +21,10 @@
         <h2 class="mb-3" style="color:#FFD700;">📚 Todos os Conteúdos</h2>
         <a href="{{ url_for('admin_trilhas') }}" class="btn mb-3" style="background-color:#333;color:#fff;">⬅ Voltar às Trilhas</a>
     {% endif %}
+
+<!-- Botão “Voltar ao Painel” sempre visível -->
+<a href="{{ url_for('admin_dashboard') }}" class="btn voltar-btn">⬅ Voltar ao Painel</a>
+
 
     <table class="table table-dark table-striped">
         <thead>

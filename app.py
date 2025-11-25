@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, g
+from werkzeug.security import generate_password_hash
 from dotenv import load_dotenv
 from openai import OpenAI
 import sqlite3
@@ -25,6 +26,21 @@ def get_db_connection():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
+
+# ======================
+# Ajuste automático de progresso
+# ======================
+def ajustar_progresso_conteudos_excluidos():
+    """Zera progresso de conteúdos que não existem mais no banco."""
+    conn = get_db_connection()
+    conn.execute("""
+        UPDATE progresso
+        SET concluido = 0, quiz_feito = 0
+        WHERE conteudo_id NOT IN (SELECT id FROM conteudos)
+    """)
+    conn.commit()
+    conn.close()
+
 
 def gerar_feedback_ia(perguntas, respostas_usuario):
     """
@@ -108,15 +124,25 @@ def is_admin():
 def index():
     return render_template("index.html")
 
+from werkzeug.security import generate_password_hash, check_password_hash
+
 @app.route("/cadastro", methods=["GET", "POST"])
 def cadastro():
     if request.method == "POST":
         nome = request.form["nome"]
         email = request.form["email"]
         senha = request.form["senha"]
+
+        # 🔹 Gera hash seguro da senha
+        senha_hash = generate_password_hash(senha)
+
         conn = get_db_connection()
         try:
-            conn.execute("INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)", (nome, email, senha))
+            # 🔹 Salva hash no banco, não a senha em texto
+            conn.execute(
+                "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
+                (nome, email, senha_hash)
+            )
             conn.commit()
         except sqlite3.IntegrityError:
             return render_template("cadastro.html", erro="Email já cadastrado!")
@@ -125,20 +151,26 @@ def cadastro():
         return redirect(url_for("login"))
     return render_template("cadastro.html", erro=None)
 
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         email = request.form["email"]
-        senha = request.form["senha"]
+        senha_digitada = request.form["senha"]
+
         conn = get_db_connection()
-        user = conn.execute("SELECT * FROM usuarios WHERE email=? AND senha=?", (email, senha)).fetchone()
-        conn.close()
-        if user:
+        user = conn.execute("SELECT * FROM usuarios WHERE email=?", (email,)).fetchone()
+        conn.close()  # Fecha a conexão imediatamente após buscar o usuário
+
+        # 🔹 Verifica se a senha digitada corresponde ao hash
+        if user and check_password_hash(user["senha"], senha_digitada):
             session["usuario_id"] = user["id"]
             if user["is_admin"] == 1:
                 return redirect(url_for("admin_dashboard"))
             return redirect(url_for("trilhas"))
+
         return render_template("login.html", erro="Usuário ou senha incorretos")
+
     return render_template("login.html", erro=None)
 
 @app.route("/logout")
@@ -176,16 +208,45 @@ def trilhas():
 
 @app.route("/trilha/<int:trilha_id>/conteudos")
 def conteudos(trilha_id):
-    if "usuario_id" not in session:
-        return redirect(url_for("login"))
     conn = get_db_connection()
+
+    # Busca trilha
     trilha = conn.execute("SELECT * FROM trilhas WHERE id=?", (trilha_id,)).fetchone()
-    conteudos = conn.execute("SELECT * FROM conteudos WHERE trilha_id=?", (trilha_id,)).fetchall()
+
+    # Busca conteúdos
+    conteudos_raw = conn.execute("SELECT * FROM conteudos WHERE trilha_id=?", (trilha_id,)).fetchall()
+
+    conteudos = []
+    for c in conteudos_raw:
+        # Verifica se existe quiz para esse conteúdo
+        tem_quiz = conn.execute("SELECT COUNT(*) FROM quizzes WHERE conteudo_id=?", (c["id"],)).fetchone()[0] > 0
+        
+        # Checa se o quiz foi concluído pelo usuário
+        if "usuario_id" in session:
+            prog = conn.execute(
+                "SELECT quiz_feito FROM progresso WHERE usuario_id=? AND conteudo_id=?",
+                (session["usuario_id"], c["id"])
+            ).fetchone()
+            quiz_concluido = bool(prog["quiz_feito"]) if prog else False
+        else:
+            quiz_concluido = False
+
+        # transforma row em dict
+        item = dict(c)
+        item["tem_quiz"] = tem_quiz
+        item["quiz_concluido"] = tem_quiz and quiz_concluido
+
+
+        conteudos.append(item)
+
     conn.close()
-    if not trilha:
-        return "Trilha não encontrada!"
-    usuario = get_usuario_logado()
-    return render_template("conteudos.html", trilha=trilha, conteudos=conteudos, usuario=usuario)
+
+    return render_template(
+        "conteudos.html",
+        conteudos=conteudos,
+        trilha=trilha,
+        usuario=get_usuario_logado()
+    )
 
 @app.route("/conteudo/<int:conteudo_id>")
 def ver_conteudo(conteudo_id):
@@ -237,7 +298,7 @@ def toggle_concluido(conteudo_id):
 # ======================
 # IA: gerar quiz automaticamente (robusto)
 # ======================
-def gerar_quiz_ia_interno(conteudo_id):
+def gerar_quiz_ia_interno(conteudo_id, dificuldade="medio", quantidade=3):
     """Gera quiz via OpenAI e salva no banco adaptando-se ao schema existente."""
     conn = get_db_connection()
     conteudo = conn.execute("SELECT * FROM conteudos WHERE id=?", (conteudo_id,)).fetchone()
@@ -250,19 +311,23 @@ def gerar_quiz_ia_interno(conteudo_id):
         return None, "Conteúdo sem texto suficiente para gerar perguntas."
 
     prompt = f"""
-Gere 3 perguntas de múltipla escolha curtas e objetivas sobre o conteúdo abaixo.
+Gere {quantidade} perguntas de múltipla escolha sobre o conteúdo abaixo.
+Nível de dificuldade: {dificuldade}.
 Cada pergunta deve ter 4 alternativas (a, b, c, d).
-Retorne APENAS um JSON válido com uma lista de objetos no formato:
+Retorne APENAS JSON válido neste formato:
+
 [
   {{
-    "pergunta": "texto da pergunta",
-    "alternativas": ["texto A","texto B","texto C","texto D"],
+    "pergunta": "...",
+    "alternativas": ["A", "B", "C", "D"],
     "resposta_correta": "a"
   }}
 ]
+
 Conteúdo:
 {texto_para_ia}
 """
+
 
     try:
         resposta = client.chat.completions.create(
@@ -333,56 +398,181 @@ Conteúdo:
 
 
 @app.route("/gerar_quiz/<int:conteudo_id>")
-def gerar_quiz_ia(conteudo_id):
+def gerar_quiz_manual(conteudo_id):
     quiz, erro = gerar_quiz_ia_interno(conteudo_id)
     if erro: return f"Erro: {erro}", 400
     return redirect(url_for("quiz", conteudo_id=conteudo_id))
 
+
+@app.route("/gerar_quiz_ia/<int:conteudo_id>", methods=["POST"])
+def gerar_quiz_ia(conteudo_id):
+    dificuldade = request.form.get("dificuldade", "medio")
+    
+    # 🔹 Validação segura da quantidade
+    try:
+        quantidade = int(request.form.get("quantidade", 0))
+    except ValueError:
+        return "Informe um número válido de perguntas (1–15).", 400
+
+    if quantidade < 1 or quantidade > 15:
+        return "Número de perguntas deve ser entre 1 e 15.", 400
+
+    regenerate = request.form.get("regenerate")
+
+    # 🔹 Se regenerar, apenas chama IA novamente
+    if regenerate == "1":
+        quiz, erro = gerar_quiz_ia_interno(conteudo_id, dificuldade, quantidade)
+        if erro:
+            return f"Erro: {erro}", 400
+        return redirect(url_for("quiz", conteudo_id=conteudo_id))
+
+    # 🔹 Geração normal
+    quiz, erro = gerar_quiz_ia_interno(conteudo_id, dificuldade, quantidade)
+    if erro:
+        return f"Erro: {erro}", 400
+
+    return redirect(url_for("quiz", conteudo_id=conteudo_id))
+
+@app.route("/excluir_quiz/<int:conteudo_id>/<int:trilha_id>", methods=["POST"])
+def excluir_quiz(conteudo_id, trilha_id):
+    conn = get_db_connection()
+
+    # Deleta o quiz
+    conn.execute("DELETE FROM quizzes WHERE conteudo_id=?", (conteudo_id,))
+
+    # 🔹 Reseta o progresso do quiz para "não concluído"
+    conn.execute(
+        "UPDATE progresso SET quiz_feito=0 WHERE usuario_id=? AND conteudo_id=?",
+        (session["usuario_id"], conteudo_id)
+    )
+
+    conn.commit()
+    conn.close()
+
+    # Ajusta progresso automaticamente
+    ajustar_progresso_conteudos_excluidos()
+
+    return redirect(url_for("conteudos", trilha_id=trilha_id))
+
 @app.route("/quiz/<int:conteudo_id>", methods=["GET","POST"])
 def quiz(conteudo_id):
-    if "usuario_id" not in session: return redirect(url_for("login"))
+    if "usuario_id" not in session:
+        return redirect(url_for("login"))
+
     conn = get_db_connection()
-    quiz_rows = conn.execute("SELECT * FROM quizzes WHERE conteudo_id=?",(conteudo_id,)).fetchall()
-    trilha = conn.execute("SELECT t.* FROM trilhas t JOIN conteudos c ON c.trilha_id=t.id WHERE c.id=?",(conteudo_id,)).fetchone()
+    quiz_rows = conn.execute(
+        "SELECT * FROM quizzes WHERE conteudo_id=?",
+        (conteudo_id,)
+    ).fetchall()
+
+    trilha = conn.execute(
+        "SELECT t.* FROM trilhas t JOIN conteudos c ON c.trilha_id = t.id WHERE c.id = ?",
+        (conteudo_id,)
+    ).fetchone()
+
+
     conn.close()
+
     perguntas = []
     for r in quiz_rows:
         try:
             alts = json.loads(r["alternativas"])
         except:
-            try: alts=ast.literal_eval(r["alternativas"])
-            except: alts=[]
-        perguntas.append({"id":r["id"],"pergunta":r["pergunta"],"alternativas":alts,"resposta_correta":(r["resposta_correta"] or "").strip().lower()})
-    if request.method=="GET":
-        if not perguntas: return render_template("quiz.html", trilha=trilha, perguntas=perguntas, msg_no_questions=True)
-        return render_template("quiz.html", trilha=trilha, perguntas=perguntas)
-    # POST
+            try:
+                alts = ast.literal_eval(r["alternativas"])
+            except:
+                alts = []
+
+        perguntas.append({
+            "id": r["id"],
+            "pergunta": r["pergunta"],
+            "alternativas": alts,
+            "resposta_correta": (r["resposta_correta"] or "").strip().lower()
+        })
+
+    # ---------------------- #
+    #  GET → Exibe o quiz    #
+    # ---------------------- #
+    if request.method == "GET":
+        if not perguntas:
+            return render_template("quiz.html",
+                trilha=trilha,
+                perguntas=perguntas,
+                msg_no_questions=True
+            )
+        return render_template("quiz.html",
+            trilha=trilha,
+            perguntas=perguntas
+        )
+
+    # ---------------------- #
+    #  POST → Corrige quiz   #
+    # ---------------------- #
     respostas = request.form
-    acertos = 0
 
-    for p in perguntas:
-        user_ans = respostas.get(str(p["id"]))
-        if user_ans and user_ans.strip().lower() == p["resposta_correta"]:
-            acertos += 1
+    # Registrar progresso do quiz
+    acertos = sum(
+        1 for p in perguntas
+        if (respostas.get(str(p["id"])) or "").strip().lower() == p["resposta_correta"]
+    )
+    total = len(perguntas)
+    quiz_concluido = 1 if acertos == total else 0  # só marca concluído se acertou todas
 
-    # Salvar progresso
     conn = get_db_connection()
     conn.execute(
-        "INSERT OR REPLACE INTO progresso (usuario_id, conteudo_id, concluido, quiz_feito) VALUES (?,?,1,1)",
-        (session["usuario_id"], conteudo_id)
+        "INSERT OR REPLACE INTO progresso (usuario_id, conteudo_id, concluido, quiz_feito) VALUES (?, ?, ?, ?)",
+        (session["usuario_id"], conteudo_id, 0, quiz_concluido)  # concluido=0 não afeta o perfil
     )
     conn.commit()
     conn.close()
 
-    # 👉 Novo: gerar feedback da IA
+
+    # Feedback IA
     feedback = gerar_feedback_ia(perguntas, respostas)
+
+    # ------------------------------- #
+    # Lista de perguntas corrigidas   #
+    # ------------------------------- #
+    resultados = []
+
+    for p in perguntas:
+        user_letra = (respostas.get(str(p["id"])) or "").strip().lower()
+        idx_usuario = ['a','b','c','d'].index(user_letra) if user_letra in ['a','b','c','d'] else None
+        resp_usuario_texto = p["alternativas"][idx_usuario] if idx_usuario is not None else "Nenhuma resposta selecionada"
+
+        idx_correta = ['a','b','c','d'].index(p["resposta_correta"])
+        resp_correta_texto = p["alternativas"][idx_correta]
+
+        resultados.append({
+            "pergunta": p["pergunta"],
+            "resposta_usuario": f"({user_letra}) {resp_usuario_texto}",
+            "resposta_correta": f"({p['resposta_correta']}) {resp_correta_texto}",
+            "correta": (user_letra == p["resposta_correta"])
+        })
+
+
+    # ---------------------- #
+    # Retorna a página final #
+    # ---------------------- #
+
+    # 🔹 Buscar trilha do conteúdo para passar ao template
+    conn = get_db_connection()
+    trilha = conn.execute(
+        "SELECT t.* FROM trilhas t JOIN conteudos c ON c.trilha_id = t.id WHERE c.id = ?",
+        (conteudo_id,)
+    ).fetchone()
+    conn.close()
 
     return render_template(
         "resultado_quiz.html",
         acertos=acertos,
         total=len(perguntas),
-        feedback=feedback
+        feedback=feedback,
+        resultados=resultados,
+        trilha=trilha  # <-- importante para o botão voltar aos conteúdos
     )
+
+
 
 
 # ======================
@@ -463,7 +653,12 @@ def admin_trilhas_excluir(id):
     conn.execute("DELETE FROM trilhas WHERE id=?", (id,))
     conn.commit()
     conn.close()
+
+    # Ajusta progresso automaticamente
+    ajustar_progresso_conteudos_excluidos()
+
     return redirect(url_for("admin_trilhas"))
+
 
 
 # Nova função: Ver Conteúdos de uma Trilha
@@ -551,7 +746,12 @@ def admin_conteudos_excluir(trilha_id, id):
     conn.execute("DELETE FROM conteudos WHERE id=?", (id,))
     conn.commit()
     conn.close()
+
+    # Ajusta progresso automaticamente
+    ajustar_progresso_conteudos_excluidos()
+
     return redirect(url_for("admin_conteudos_trilha", trilha_id=trilha_id))
+
 
 
 # Admin - Conteúdos
